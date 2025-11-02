@@ -215,21 +215,21 @@ def status(request: Request, session: SessionDep):
 def tech(request: Request):
     return templates.TemplateResponse(request=request, name="tech.html")
 
+## DISABLED FOR SECURITY
+#@app.get("/space/by_id/{space_id}")
+#def read_space(space_id: int, session: SessionDep) -> Space:
+#    space = session.get(Space, space_id)
+#    if not space:
+#        raise HTTPException(status_code=404, detail="Space not found")
+#    return space
 
-@app.get("/space/by_id/{space_id}")
-def read_space(space_id: int, session: SessionDep) -> Space:
-    space = session.get(Space, space_id)
-    if not space:
-        raise HTTPException(status_code=404, detail="Space not found")
-    return space
-
-
-@app.get("/space/by_name/{space_name}", response_model=SpacePublic)
-def read_space_by_name(space_name: str, session: SessionDep) -> Space:
-    space = session.exec(select(Space).where(Space.name == space_name)).first()
-    if not space:
-        raise HTTPException(status_code=404, detail="Space not found")
-    return space
+## DISABLED FOR SECURITY
+#@app.get("/space/by_name/{space_name}", response_model=SpacePublic)
+#def read_space_by_name(space_name: str, session: SessionDep) -> Space:
+#    space = session.exec(select(Space).where(Space.name == space_name)).first()
+#    if not space:
+#        raise HTTPException(status_code=404, detail="Space not found")
+#    return space
 
 
 @app.post("/space_events/{space_id}/open", response_model=SpaceEvent)
@@ -263,19 +263,19 @@ def close_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPB
     background_tasks.add_task(send_telegram_message, space, event, session)
     return event
 
-
-@app.get("/space_events/{space_id}")
-def read_space_events(
-    space_id: int,
-    session: SessionDep,
-    skip: int = 0,
-    limit: int = Query(default=100, lte=1000)
-):
-    events = session.exec(
-        select(SpaceEvent).where(SpaceEvent.space_id ==
-                                 space_id).offset(skip).limit(limit)
-    ).all()
-    return events
+## DISABLED FOR SECURITY
+#@app.get("/space_events/{space_id}")
+#def read_space_events(
+#    space_id: int,
+#    session: SessionDep,
+#    skip: int = 0,
+#    limit: int = Query(default=100, lte=1000)
+#):
+#    events = session.exec(
+#        select(SpaceEvent).where(SpaceEvent.space_id ==
+#                                 space_id).offset(skip).limit(limit)
+#    ).all()
+#    return events
 
 
 @app.get("/space_events/{space_id}/latest", response_model=SpaceEvent)
