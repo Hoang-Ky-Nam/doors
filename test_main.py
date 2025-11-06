@@ -139,3 +139,10 @@ def test_space_api_schema():
         validate(instance=data, schema=schema_json)
     except Exception as e:
         pytest.fail(f"JSON schema validation failed: {e}")
+
+def test_keepalive_update():
+    response = client.post(
+        "/space/1/keepalive",
+        auth=("TestSpace", "testpass")
+    )
+    assert response.status_code == 200
