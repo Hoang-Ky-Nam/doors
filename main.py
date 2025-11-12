@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Read keealive interval from env
 KEEPALIVE_INTERVAL = int(
-    os.getenv("KEEPALIVE_INTERVAL", "300"))  # default 300 seconds
+    os.getenv("KEEPALIVE_INTERVAL", "30"))  # default 300 seconds
 
 
 class SpaceEventState(str, Enum):
@@ -231,8 +231,8 @@ SessionDep = Annotated[Session, Depends(get_session)]
 app = FastAPI(lifespan=lifespan,
               docs_url=None,     # disables Swagger UI
               redoc_url=None,    # disables ReDoc
-              openapi_url=None   # optionally disables the OpenAPI schema endpoint
-              )
+              openapi_url=None,   # optionally disables the OpenAPI schema endpoint
+              debug=True)
 
 
 security = HTTPBasic()
@@ -320,7 +320,7 @@ async def close_space(space_id: int, session: SessionDep, credentials: Annotated
     return event
 
 
-@app.post("/space/{space_id}/keepalive")
+@app.post("/space/{space_id}/keepalive/")
 def keepalive_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
     space = session.get(Space, space_id)
     if not authenticate(credentials, session, space):
