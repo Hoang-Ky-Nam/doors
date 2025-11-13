@@ -334,7 +334,7 @@ def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annota
         select(SpaceEvent).where(SpaceEvent.space_id ==
                                  space.id).order_by(SpaceEvent.timestamp.desc())
     ).first()
-    if latest_event != SpaceEventState.OPEN:
+    if latest_event.state != SpaceEventState.OPEN:
         event = SpaceEvent(space_id=space_id, state=SpaceEventState.OPEN)
         session.add(event)
         session.commit()
@@ -357,7 +357,7 @@ def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annot
         select(SpaceEvent).where(SpaceEvent.space_id ==
                                  space.id).order_by(SpaceEvent.timestamp.desc())
     ).first()
-    if latest_event != SpaceEventState.CLOSED:
+    if latest_event.state != SpaceEventState.CLOSED:
         event = SpaceEvent(space_id=space_id, state=SpaceEventState.CLOSED)
         session.add(event)
         session.commit()
