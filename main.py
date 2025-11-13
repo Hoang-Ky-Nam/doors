@@ -204,6 +204,7 @@ async def scheduled_task(session):
 
 async def check_keepalives(session):
     spaces = session.exec(select(Space)).all()
+    logger.info(f"Stage 0. Keepalive checking.")
     for space in spaces:
         latest_event = session.exec(
                 select(SpaceEvent).where(SpaceEvent.space_id ==
