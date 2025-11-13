@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Read keealive interval from env
 KEEPALIVE_INTERVAL = int(
-    os.getenv("KEEPALIVE_INTERVAL", "30"))  # default 300 seconds
+    os.getenv("KEEPALIVE_INTERVAL", "300"))  # default 300 seconds
 
 
 class SpaceEventState(str, Enum):
@@ -320,8 +320,8 @@ async def close_space(space_id: int, session: SessionDep, credentials: Annotated
     return event
 
 
-@app.post("/space/{space_id}/keepalive/")
-def keepalive_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
+@app.post("/space_events/{space_id}/keepalive/open")
+def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
     space = session.get(Space, space_id)
     if not authenticate(credentials, session, space):
         raise HTTPException(
@@ -329,7 +329,42 @@ def keepalive_space(space_id: int, session: SessionDep, credentials: Annotated[H
     space.last_keepalive = datetime.now(timezone.utc)
     session.add(space)
     session.commit()
-    logger.info(f"Received keepalive from space '{space.name}'.")
+
+    latest_event = session.exec(
+        select(SpaceEvent).where(SpaceEvent.space_id ==
+                                 space.id).order_by(SpaceEvent.timestamp.desc())
+    ).first()
+    if latest_event != SpaceEventState.OPEN:
+        event = SpaceEvent(space_id=space_id, state=SpaceEventState.OPEN)
+        session.add(event)
+        session.commit()
+        session.refresh(event)
+        delete_telegram_message(space, session)
+        background_tasks.add_task(send_telegram_message, space, event, session)
+    logger.info(f"Received keepalive from space '{space.name}'. State open.")
+    return {"message": "Keepalive received"}
+
+@app.post("/space_events/{space_id}/keepalive/close")
+def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
+    space = session.get(Space, space_id)
+    if not authenticate(credentials, session, space):
+        raise HTTPException(
+            status_code=403, detail="Forbidden")
+    space.last_keepalive = datetime.now(timezone.utc)
+    session.add(space)
+    session.commit()
+    latest_event = session.exec(
+        select(SpaceEvent).where(SpaceEvent.space_id ==
+                                 space.id).order_by(SpaceEvent.timestamp.desc())
+    ).first()
+    if latest_event != SpaceEventState.CLOSED:
+        event = SpaceEvent(space_id=space_id, state=SpaceEventState.CLOSED)
+        session.add(event)
+        session.commit()
+        session.refresh(event)
+        delete_telegram_message(space, session)
+        background_tasks.add_task(send_telegram_message, space, event, session)
+    logger.info(f"Received keepalive from space '{space.name}'. State closed.")
     return {"message": "Keepalive received"}
 
 

@@ -24,7 +24,7 @@ const int buttonPin = 15;
 
 int old_door_state = 0;
 int door_state = 0;
-
+int timer = 0;
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   //pinMode(8, INPUT);
@@ -42,7 +42,7 @@ void setup() {
   
   old_door_state = digitalRead(buttonPin);
   show_running();
-  https_stuff(old_door_state);
+  https_stuff(old_door_state, 0);
 }
 
 void loop() {
@@ -62,19 +62,24 @@ void loop() {
         Serial.print("[ModeemiDoorbot] New state is OPEN, Sending update to server...\n");
         digitalWrite(LED_BUILTIN, HIGH);
       }
-      https_stuff(verify_door_state);
+      https_stuff(verify_door_state, 0);
     }
 
   }
   //https_stuff(door_state);
   show_armed();
   Serial.println("[ModeemiDoorbot] Waiting 4s...");
-  delay(8000);
+  delay(10000);
+  timer = timer + 1;
+  if(timer == TIMER0){
+    timer = 0;
+    https_stuff(door_state, 1);
+  }
 }
 
 
 
-void https_stuff(int door_state){
+void https_stuff(int door_state, int keepalive){
   if ((WiFiMulti.run() == WL_CONNECTED)) {
 
     std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
@@ -88,11 +93,21 @@ void https_stuff(int door_state){
     Serial.print("[HTTPS] begin...\n");
     String httpAddress;
     String spaceid = SPACEID;
-    if(door_state == 0){
-      httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/open";
-    } else {
-      httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/close";
+    if(keepalive == 0){
+      if(door_state == 0){
+        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/open";
+      } else {
+        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/close";
+      }
+    }else{
+      if(door_state == 0){
+        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/keepalive/open";
+      } else {
+        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/keepalive/close";
+      }
     }
+
+    
       
     
 
