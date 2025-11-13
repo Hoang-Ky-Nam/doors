@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Read keealive interval from env
 KEEPALIVE_INTERVAL = int(
-    os.getenv("KEEPALIVE_INTERVAL", "300"))  # default 300 seconds
+    os.getenv("KEEPALIVE_INTERVAL", "30"))  # default 300 seconds
 
 
 class SpaceEventState(str, Enum):
@@ -231,8 +231,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 app = FastAPI(lifespan=lifespan,
               docs_url=None,     # disables Swagger UI
               redoc_url=None,    # disables ReDoc
-              openapi_url=None,   # optionally disables the OpenAPI schema endpoint
-              debug=True)
+              openapi_url=None)
 
 
 security = HTTPBasic()
