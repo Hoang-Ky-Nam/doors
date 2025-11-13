@@ -209,8 +209,9 @@ async def check_keepalives(session):
                 select(SpaceEvent).where(SpaceEvent.space_id ==
                                          space.id).order_by(SpaceEvent.timestamp.desc())
             ).first()
+        logger.info(f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
         if latest_event.state != SpaceEventState.UNKNOWN:
-            logger.info(f"Keepalive checking for space '{space.name}' .")
+            logger.info(f"Stage 2. Keepalive checking for space '{space.name}' .")
             now = datetime.now(timezone.utc)
             delta = now - space.last_keepalive
             if delta.total_seconds() > KEEPALIVE_INTERVAL:
