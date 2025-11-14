@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Read keealive interval from env
 KEEPALIVE_INTERVAL = int(
-    os.getenv("KEEPALIVE_INTERVAL", "30"))  # default 300 seconds
+    os.getenv("KEEPALIVE_INTERVAL", "1300"))  # default 300 seconds
 
 
 class SpaceEventState(str, Enum):
@@ -214,11 +214,7 @@ async def check_keepalives(session):
         logger.info(f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
         if latest_event.state != SpaceEventState.UNKNOWN:
             logger.info(f"Stage 2. Keepalive checking for space '{space.name}' .")
-
-            #naive_keepalive = datetime.strptime(space.last_keepalive, "%Y-%m-%d %H:%M:%S.%f")
-
             aware_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
-
             now = datetime.now(timezone.utc)
             delta = now - aware_keepalive
             if delta.total_seconds() > KEEPALIVE_INTERVAL:
