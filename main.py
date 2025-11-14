@@ -7,6 +7,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime
 from enum import Enum
 from sqlalchemy.orm import reconstructor
+from sqlalchemy import Column, event
 from datetime import datetime, timezone
 from argon2 import PasswordHasher
 import requests
@@ -39,13 +40,8 @@ class SpacePublic(SQLModel):
     lat: float = Field(default=None, nullable=True)
     lon: float = Field(default=None, nullable=True)
     contact_email: str = Field(default=None, nullable=False)
-    last_keepalive: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
-    @reconstructor
-    def ensure_timezone_aware(self):
-        if self.last_keepalive.tzinfo is None:
-            # Make it timezone aware (UTC)
-            self.last_keepalive = self.last_keepalive.replace(tzinfo=timezone.utc)
+    #last_keepalive: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_keepalive: datetime = Field(sa_column=Column(DateTime(timezone=True)), default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Space(SpacePublic, table=True):
@@ -53,6 +49,11 @@ class Space(SpacePublic, table=True):
     telegram_bot_token: str = Field(default=None, nullable=True)
     telegram_channel_id: str = Field(default=None, nullable=True)
     telegram_enabled: bool = Field(default=False, nullable=False)
+
+@event.listens_for(Space, "load")
+def receive_load(space, context):
+    if space.last_keepalive and space.last_keepalive.tzinfo is None:
+        space.last_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
 
 class SpaceEventPublic(SQLModel):
     id: int | None = Field(default=None, primary_key=True)
@@ -213,8 +214,13 @@ async def check_keepalives(session):
         logger.info(f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
         if latest_event.state != SpaceEventState.UNKNOWN:
             logger.info(f"Stage 2. Keepalive checking for space '{space.name}' .")
+
+            #naive_keepalive = datetime.strptime(space.last_keepalive, "%Y-%m-%d %H:%M:%S.%f")
+
+            aware_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
+
             now = datetime.now(timezone.utc)
-            delta = now - space.last_keepalive
+            delta = now - aware_keepalive
             if delta.total_seconds() > KEEPALIVE_INTERVAL:
                 logger.warning(
                     f"Space '{space.name}' has not sent keepalive for {delta.total_seconds()/60:.1f} minutes.")
@@ -226,6 +232,7 @@ async def check_keepalives(session):
                     f"Space '{space.name}' state set to UNKNOWN due to missing keepalive.")
                 delete_telegram_message(space, session)
                 send_telegram_message(space, unknown_event, session)
+    logger.info(f"Stage 5. Keepalive check ended.")
 
 
 SessionDep = Annotated[Session, Depends(get_session)]

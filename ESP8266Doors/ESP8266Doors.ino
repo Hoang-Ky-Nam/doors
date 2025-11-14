@@ -13,14 +13,14 @@
 #include <WiFiClientSecureBearSSL.h>
 
 #include "certs.h"
-#include "IoTvars_valvomo.h" // change name of file IoTvars_default.h to IoTvars.h
+#include "IoTvars_TaSciEn.h" // change name of file IoTvars_default.h to IoTvars.h
 
 
 
 
 ESP8266WiFiMulti WiFiMulti;
 
-const int buttonPin = 15;
+const int buttonPin = BUTTONPIN;
 
 int old_door_state = 0;
 int door_state = 0;
@@ -94,13 +94,13 @@ void https_stuff(int door_state, int keepalive){
     String httpAddress;
     String spaceid = SPACEID;
     if(keepalive == 0){
-      if(door_state == 0){
+      if(door_state == INVERT_SET){
         httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/open";
       } else {
         httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/close";
       }
     }else{
-      if(door_state == 0){
+      if(door_state == INVERT_SET){
         httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/keepalive/open";
       } else {
         httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/keepalive/close";
