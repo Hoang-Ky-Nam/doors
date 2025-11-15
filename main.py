@@ -366,8 +366,6 @@ def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annot
     logger.info(f"Received keepalive from space '{space.name}'. State closed.")
     return {"message": "Keepalive received"}
 
-# SpaceAPI response
-
 
 @app.get("/space/{space_name}/space.json")
 def space_api(space_name: str, session: SessionDep, credentials: Optional[HTTPBasicCredentials] = Depends(security)):
@@ -404,6 +402,7 @@ def space_api(space_name: str, session: SessionDep, credentials: Optional[HTTPBa
             space_json["location"]["lat"] = space.lat
             space_json["location"]["lon"] = space.lon
     if latest_event is not None:
+        # UTC Unix timestamp
         space_json["state"]["lastchange"] = int(
-            latest_event.timestamp.timestamp())
+            latest_event.timestamp.replace(tzinfo=timezone.utc).timestamp())
     return space_json
