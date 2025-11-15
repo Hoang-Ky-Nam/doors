@@ -11,6 +11,7 @@ The information should be easily accessible, that's why there is integration wit
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 fastapi dev main.py
 ```
 
@@ -49,5 +50,19 @@ pytest
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 fastapi run main.py
+```
+
+## Migrations
+
+```
+alembic revision --autogenerate -m "Description of changes"
+alembic upgrade head
+```
+
+Downgrade one step:
+
+```
+alembic downgrade -1
 ```

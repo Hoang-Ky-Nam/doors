@@ -1,5 +1,5 @@
 from typing import Annotated, Optional
-from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -155,10 +155,6 @@ connect_args = {"check_same_thread": False}
 engine = create_engine(sqlite_url, connect_args=connect_args)
 
 
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
-
-
 def get_session():
     with Session(engine) as session:
         yield session
@@ -166,7 +162,6 @@ def get_session():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
     task = None
     # Create a default space for testing
     with Session(engine) as session:
@@ -258,7 +253,8 @@ def main_page():
 @app.get("/status")
 def status(request: Request, session: SessionDep):
     # Select only non is_private spaces
-    spaces_from_db = session.exec(select(Space).where(Space.is_private == False)).all()
+    spaces_from_db = session.exec(
+        select(Space).where(Space.is_private == False)).all()
     spaces_dict = {}
     spaces_counter = 1
     for space_idx in spaces_from_db:
