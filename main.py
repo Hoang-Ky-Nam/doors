@@ -40,8 +40,9 @@ class SpacePublic(SQLModel):
     lat: float = Field(default=None, nullable=True)
     lon: float = Field(default=None, nullable=True)
     contact_email: str = Field(default=None, nullable=False)
-    #last_keepalive: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_keepalive: datetime = Field(sa_column=Column(DateTime(timezone=True)), default_factory=lambda: datetime.now(timezone.utc))
+    # last_keepalive: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_keepalive: datetime = Field(sa_column=Column(
+        DateTime(timezone=True)), default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Space(SpacePublic, table=True):
@@ -50,10 +51,13 @@ class Space(SpacePublic, table=True):
     telegram_channel_id: str = Field(default=None, nullable=True)
     telegram_enabled: bool = Field(default=False, nullable=False)
 
+
 @event.listens_for(Space, "load")
 def receive_load(space, context):
     if space.last_keepalive and space.last_keepalive.tzinfo is None:
-        space.last_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
+        space.last_keepalive = space.last_keepalive.replace(
+            tzinfo=timezone.utc)
+
 
 class SpaceEventPublic(SQLModel):
     id: int | None = Field(default=None, primary_key=True)
@@ -62,7 +66,7 @@ class SpaceEventPublic(SQLModel):
         default_factory=lambda: datetime.now(timezone.utc), index=True)
     state: SpaceEventState = Field(
         sa_column_kwargs={"default": SpaceEventState.UNKNOWN})
-    
+
 
 class SpaceEvent(SpaceEventPublic, table=True):
     telegram_message_id: int | None = Field(default=None, nullable=True)
@@ -208,12 +212,14 @@ async def check_keepalives(session):
     logger.info(f"Stage 0. Keepalive checking.")
     for space in spaces:
         latest_event = session.exec(
-                select(SpaceEvent).where(SpaceEvent.space_id ==
-                                         space.id).order_by(SpaceEvent.timestamp.desc())
-            ).first()
-        logger.info(f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
+            select(SpaceEvent).where(SpaceEvent.space_id ==
+                                     space.id).order_by(SpaceEvent.timestamp.desc())
+        ).first()
+        logger.info(
+            f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
         if latest_event.state != SpaceEventState.UNKNOWN:
-            logger.info(f"Stage 2. Keepalive checking for space '{space.name}' .")
+            logger.info(
+                f"Stage 2. Keepalive checking for space '{space.name}' .")
             aware_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             delta = now - aware_keepalive
@@ -278,20 +284,6 @@ def status(request: Request, session: SessionDep):
 def tech(request: Request):
     return templates.TemplateResponse(request=request, name="tech.html")
 
-@app.get("/space/by_id/{space_id}", response_model=SpacePublic)
-def read_space(space_id: int, session: SessionDep) -> Space:
-   space = session.get(Space, space_id)
-   if not space:
-       raise HTTPException(status_code=404, detail="Space not found")
-   return space
-
-@app.get("/space/by_name/{space_name}", response_model=SpacePublic)
-def read_space_by_name(space_name: str, session: SessionDep) -> Space:
-   space = session.exec(select(Space).where(Space.name == space_name)).first()
-   if not space:
-       raise HTTPException(status_code=404, detail="Space not found")
-   return space
-
 
 @app.post("/space_events/{space_id}/open", response_model=SpaceEventPublic)
 async def open_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks) -> SpaceEvent:
@@ -349,6 +341,7 @@ def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annota
     logger.info(f"Received keepalive from space '{space.name}'. State open.")
     return {"message": "Keepalive received"}
 
+
 @app.post("/space_events/{space_id}/keepalive/close")
 def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
     space = session.get(Space, space_id)
@@ -372,34 +365,9 @@ def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annot
     logger.info(f"Received keepalive from space '{space.name}'. State closed.")
     return {"message": "Keepalive received"}
 
-
-@app.get("/space_events/{space_id}", response_model=list[SpaceEventPublic])
-def read_space_events(
-   space_id: int,
-   session: SessionDep,
-   skip: int = 0,
-   limit: int = Query(default=100, lte=1000)
-):
-   events = session.exec(
-       select(SpaceEvent).where(SpaceEvent.space_id ==
-                                space_id).offset(skip).limit(limit)
-   ).all()
-   return events
-
-
-@app.get("/space_events/{space_id}/latest", response_model=SpaceEventPublic)
-def read_latest_space_event(space_id: int, session: SessionDep):
-    event = session.exec(
-        select(SpaceEvent).where(SpaceEvent.space_id ==
-                                 space_id).order_by(SpaceEvent.timestamp.desc())
-    ).first()
-    if not event:
-        raise HTTPException(
-            status_code=404, detail="No events found for this space")
-    return event
-
-
 # SpaceAPI response
+
+
 @app.get("/space/{space_name}/space.json")
 def space_api(space_name: str, session: SessionDep):
     space = session.exec(select(Space).where(Space.name == space_name)).first()

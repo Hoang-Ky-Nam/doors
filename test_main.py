@@ -61,20 +61,6 @@ def setup_space(test_db):
 client = TestClient(app)
 
 
-def test_read_space_by_id():
-    response = client.get("/space/by_id/1")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == "TestSpace"
-
-
-def test_read_space_by_name():
-    response = client.get("/space/by_name/TestSpace")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == "TestSpace"
-
-
 def test_open_space_event_auth_fail():
     response = client.post(
         "/space_events/1/open",
@@ -103,18 +89,6 @@ def test_close_space():
     assert data["state"] == "closed"
 
 
-def test_read_latest_space_event():
-    # First, create an event
-    response = client.post(
-        "/space_events/1/open",
-        auth=("TestSpace", "testpass")
-    )
-    response = client.get("/space_events/1/latest")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["state"] in ["open", "closed"]
-
-
 def test_space_api():
     response = client.get("/space/TestSpace/space.json")
     assert response.status_code == 200
@@ -139,10 +113,3 @@ def test_space_api_schema():
         validate(instance=data, schema=schema_json)
     except Exception as e:
         pytest.fail(f"JSON schema validation failed: {e}")
-
-def test_keepalive_update():
-    response = client.post(
-        "/space/1/keepalive",
-        auth=("TestSpace", "testpass")
-    )
-    assert response.status_code == 200
