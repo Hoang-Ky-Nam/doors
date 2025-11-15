@@ -6,7 +6,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime
 from enum import Enum
-from sqlalchemy.orm import reconstructor
 from sqlalchemy import Column, event
 from datetime import datetime, timezone
 from argon2 import PasswordHasher
