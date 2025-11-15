@@ -186,7 +186,7 @@ async def lifespan(app: FastAPI):
                 space_id=1, state=SpaceEventState.UNKNOWN)
             session.add(initial_event)
             session.commit()
-        task = asyncio.create_task(scheduled_task(session))
+    task = asyncio.create_task(scheduled_task())
     yield
     # Cleanup: cancel task on shutdown
     task.cancel()
@@ -196,10 +196,11 @@ async def lifespan(app: FastAPI):
         pass
 
 
-async def scheduled_task(session):
+async def scheduled_task():
     while True:
         await asyncio.sleep(KEEPALIVE_INTERVAL)
-        await check_keepalives(session)
+        with Session(engine) as session:
+            await check_keepalives(session)
 
 
 async def check_keepalives(session):
