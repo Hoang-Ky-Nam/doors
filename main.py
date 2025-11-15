@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Read keealive interval from env
 KEEPALIVE_INTERVAL = int(
-    os.getenv("KEEPALIVE_INTERVAL", "1300"))  # default 1300 seconds
+    os.getenv("KEEPALIVE_INTERVAL", "130"))  # default 1300 seconds
 
 
 class SpaceEventState(str, Enum):
