@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
@@ -47,6 +47,7 @@ class SpacePublic(SQLModel):
 
 class Space(SpacePublic, table=True):
     basic_auth_password: str = Field()
+    is_private: bool = Field(default=False, nullable=False)
     telegram_bot_token: str = Field(default=None, nullable=True)
     telegram_channel_id: str = Field(default=None, nullable=True)
     telegram_enabled: bool = Field(default=False, nullable=False)
@@ -246,7 +247,7 @@ app = FastAPI(lifespan=lifespan,
               openapi_url=None)
 
 
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # app.mount("/site", StaticFiles(directory="site", html = True), name="site")
@@ -320,7 +321,7 @@ async def close_space(space_id: int, session: SessionDep, credentials: Annotated
 @app.post("/space_events/{space_id}/keepalive/open")
 def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     space.last_keepalive = datetime.now(timezone.utc)
@@ -345,7 +346,7 @@ def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annota
 @app.post("/space_events/{space_id}/keepalive/close")
 def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     space.last_keepalive = datetime.now(timezone.utc)
@@ -369,30 +370,40 @@ def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annot
 
 
 @app.get("/space/{space_name}/space.json")
-def space_api(space_name: str, session: SessionDep):
+def space_api(space_name: str, session: SessionDep, credentials: Optional[HTTPBasicCredentials] = Depends(security)):
     space = session.exec(select(Space).where(Space.name == space_name)).first()
     if not space:
         raise HTTPException(status_code=404, detail="Space not found")
+    if space.is_private:
+        if not credentials or not authenticate(credentials, session, space):
+            raise HTTPException(
+                status_code=401, detail="Unauthorized")
     latest_event = session.exec(
         select(SpaceEvent).where(SpaceEvent.space_id ==
                                  space.id).order_by(SpaceEvent.timestamp.desc())
     ).first()
     state = latest_event.state if latest_event else SpaceEventState.UNKNOWN
-    return {
+    space_json = {
         "api_compatibility": ["15"],
         "space": space.name,
         "logo": space.logo,
         "url": space.url,
-        "location": {
-            "address": space.address,
-            "lat": space.lat,
-            "lon": space.lon
-        },
         "state": {
             "open": state == SpaceEventState.OPEN,
-            "lastchange": int(latest_event.timestamp.timestamp()) if latest_event else None
         },
         "contact": {
             "email": space.contact_email
         }
     }
+    # Add location if available
+    if space.address or (space.lat is not None and space.lon is not None):
+        space_json["location"] = {}
+        if space.address:
+            space_json["location"]["address"] = space.address
+        if space.lat is not None and space.lon is not None:
+            space_json["location"]["lat"] = space.lat
+            space_json["location"]["lon"] = space.lon
+    if latest_event is not None:
+        space_json["state"]["lastchange"] = int(
+            latest_event.timestamp.timestamp())
+    return space_json

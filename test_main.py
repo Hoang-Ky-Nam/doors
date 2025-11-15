@@ -113,3 +113,30 @@ def test_space_api_schema():
         validate(instance=data, schema=schema_json)
     except Exception as e:
         pytest.fail(f"JSON schema validation failed: {e}")
+
+
+def test_private_space_api_auth_fail():
+    # Change space to private
+    with Session(app.state._engine) as session:
+        space = session.exec(select(Space).where(
+            Space.name == "TestSpace")).first()
+        space.is_private = True
+        session.add(space)
+        session.commit()
+    response = client.get("/space/TestSpace/space.json")
+    assert response.status_code == 401
+
+
+def test_private_space_api_auth_success():
+    # Change space to private
+    with Session(app.state._engine) as session:
+        space = session.exec(select(Space).where(
+            Space.name == "TestSpace")).first()
+        space.is_private = True
+        session.add(space)
+        session.commit()
+    response = client.get(
+        "/space/TestSpace/space.json",
+        auth=("TestSpace", "testpass")
+    )
+    assert response.status_code == 200

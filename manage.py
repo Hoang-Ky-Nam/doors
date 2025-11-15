@@ -22,36 +22,20 @@ def create_space(
     telegram_bot_token: str = typer.Option(
         None, help="Telegram bot token (optional)"),
     telegram_enabled: bool = typer.Option(
-        False, help="Enable Telegram notifications")
+        False, help="Enable Telegram notifications"),
+    is_private: bool = typer.Option(False, help="Make space private")
 ):
     """Create a new space interactively or via CLI options."""
     if not name:
         name = typer.prompt("Space name")
     if logo is None:
-        logo = typer.prompt("Logo URL (optional)", default=None)
+        logo = typer.prompt("Logo URL")
     if url is None:
-        url = typer.prompt("Website URL (optional)", default=None)
-    if address is None:
-        address = typer.prompt("Address (optional)", default=None)
-    if lat is None:
-        lat_str = typer.prompt("Latitude (optional)", default=None)
-        lat = float(lat_str) if lat_str else None
-    if lon is None:
-        lon_str = typer.prompt("Longitude (optional)", default=None)
-        lon = float(lon_str) if lon_str else None
+        url = typer.prompt("Website URL")
     if contact_email is None:
-        contact_email = typer.prompt("Contact email (optional)", default=None)
+        contact_email = typer.prompt("Contact email")
     if not password:
         password = getpass("Basic auth password: ")
-    if not telegram_channel_id:
-        telegram_channel_id = typer.prompt(
-            "Telegram channel ID (optional)", default=None)
-    if not telegram_bot_token:
-        telegram_bot_token = typer.prompt(
-            "Telegram bot token (optional)", default=None)
-    if telegram_enabled is None:
-        telegram_enabled = typer.confirm(
-            "Enable Telegram notifications?", default=False)
     hashed_password = hash_password(password)
 
     with Session(engine) as session:
@@ -68,7 +52,11 @@ def create_space(
             lat=lat,
             lon=lon,
             contact_email=contact_email,
-            basic_auth_password=hashed_password
+            basic_auth_password=hashed_password,
+            telegram_channel_id=telegram_channel_id,
+            telegram_bot_token=telegram_bot_token,
+            telegram_enabled=telegram_enabled,
+            is_private=is_private
         )
         session.add(space)
         session.commit()
