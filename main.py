@@ -240,10 +240,7 @@ async def check_keepalives(session):
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-app = FastAPI(lifespan=lifespan,
-              docs_url=None,     # disables Swagger UI
-              redoc_url=None,    # disables ReDoc
-              openapi_url=None)
+app = FastAPI(lifespan=lifespan)
 
 
 security = HTTPBasic(auto_error=False)
