@@ -257,15 +257,16 @@ def main_page():
 
 @app.get("/status")
 def status(request: Request, session: SessionDep):
-    spaces_from_db = session.exec(select(Space)).all()
+    # Select only non is_private spaces
+    spaces_from_db = session.exec(select(Space).where(Space.is_private == False)).all()
     spaces_dict = {}
     spaces_counter = 1
     for space_idx in spaces_from_db:
         latest_event = session.exec(select(SpaceEvent).where(
             SpaceEvent.space_id == space_idx.id).order_by(SpaceEvent.timestamp.desc())).first()
-        if latest_event.state == SpaceEventState.OPEN:
+        if latest_event and latest_event.state == SpaceEventState.OPEN:
             current_state = "open"
-        elif latest_event.state == SpaceEventState.CLOSED:
+        elif latest_event and latest_event.state == SpaceEventState.CLOSED:
             current_state = "closed"
         else:
             current_state = "unknown"
