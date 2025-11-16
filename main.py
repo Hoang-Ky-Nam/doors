@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Read keealive interval from env
 KEEPALIVE_INTERVAL = int(
-    os.getenv("KEEPALIVE_INTERVAL", "200"))  # default 1300 seconds
+    os.getenv("KEEPALIVE_INTERVAL", "30"))  # default 1300 seconds
 
 
 class SpaceEventState(str, Enum):
@@ -100,7 +100,7 @@ def send_telegram_message(space, space_event, session):
     """Send Telegram message about space event"""
     if not space.telegram_enabled or not space.telegram_bot_token or not space.telegram_channel_id:
         return
-    message = f"'{space.name}' door is {space_event.state.value}."
+    message = f"{space.name} door is {space_event.state.value}."
     url = f"https://api.telegram.org/bot{space.telegram_bot_token}/sendMessage"
     payload = {
         "chat_id": space.telegram_channel_id,
@@ -123,10 +123,12 @@ def send_telegram_message(space, space_event, session):
 
 
 def delete_telegram_message(space, session):
+    logger.info(f"(1) Telegram message tried to be deleted for space '{space.name}'.")
     """Delete previous Telegram message about space event"""
     if not space.telegram_enabled or not space.telegram_bot_token or not space.telegram_channel_id:
         return
     # Get the latest event with telegram_message_id
+    logger.info(f" (2) Telegram message tried to be deleted for space '{space.name}'.")
     latest_event = session.exec(
         select(SpaceEvent)
         .where(SpaceEvent.space_id == space.id, SpaceEvent.telegram_message_id != None)
@@ -134,7 +136,9 @@ def delete_telegram_message(space, session):
     ).first()
     if not latest_event:
         return
+    logger.info(f" (3) Telegram message tried to be deleted for space '{space.name}'.")
     url = f"https://api.telegram.org/bot{space.telegram_bot_token}/deleteMessage"
+
     payload = {
         "chat_id": space.telegram_channel_id,
         "message_id": latest_event.telegram_message_id
@@ -221,13 +225,13 @@ async def check_keepalives(session):
             delta = now - aware_keepalive
             if delta.total_seconds() > KEEPALIVE_INTERVAL:
                 logger.warning(
-                    f"Space '{space.name}' has not sent keepalive for {delta.total_seconds()/60:.1f} minutes.")
+                    f"Space {space.name} has not sent keepalive for {delta.total_seconds()/60:.1f} minutes.")
                 unknown_event = SpaceEvent(
                     space_id=space.id, state=SpaceEventState.UNKNOWN)
                 session.add(unknown_event)
                 session.commit()
                 logger.info(
-                    f"Space '{space.name}' state set to UNKNOWN due to missing keepalive.")
+                    f"Space {space.name} state set to UNKNOWN due to missing keepalive.")
                 delete_telegram_message(space, session)
                 send_telegram_message(space, unknown_event, session)
     logger.info(f"Stage 5. Keepalive check ended.")
@@ -290,7 +294,7 @@ async def open_space(space_id: int, session: SessionDep, credentials: Annotated[
     session.add(event)
     session.commit()
     session.refresh(event)
-    logger.info(f"Space '{space.name}' opened.")
+    logger.info(f"Space {space.name} opened.")
     delete_telegram_message(space, session)
     background_tasks.add_task(send_telegram_message, space, event, session)
     return event
@@ -306,7 +310,7 @@ async def close_space(space_id: int, session: SessionDep, credentials: Annotated
     session.add(event)
     session.commit()
     session.refresh(event)
-    logger.info(f"Space '{space.name}' closed.")
+    logger.info(f"Space {space.name} closed.")
     delete_telegram_message(space, session)
     background_tasks.add_task(send_telegram_message, space, event, session)
     return event
@@ -333,7 +337,7 @@ def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annota
         session.refresh(event)
         delete_telegram_message(space, session)
         background_tasks.add_task(send_telegram_message, space, event, session)
-    logger.info(f"Received keepalive from space '{space.name}'. State open.")
+    logger.info(f"Received keepalive from space {space.name}. State open.")
     return {"message": "Keepalive received"}
 
 
@@ -357,7 +361,7 @@ def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annot
         session.refresh(event)
         delete_telegram_message(space, session)
         background_tasks.add_task(send_telegram_message, space, event, session)
-    logger.info(f"Received keepalive from space '{space.name}'. State closed.")
+    logger.info(f"Received keepalive from space {space.name}. State closed.")
     return {"message": "Keepalive received"}
 
 
