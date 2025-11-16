@@ -1,14 +1,17 @@
+import secrets
 from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from secure import ContentSecurityPolicy, Preset, Secure
 from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime
 from enum import Enum
 from sqlalchemy import Column, event
 from datetime import datetime, timezone
 from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError
 import requests
 import logging
 from contextlib import asynccontextmanager
@@ -81,7 +84,7 @@ def verify_password(hashed_password: str, password: str) -> bool:
     """Verify password using argon2id"""
     try:
         return PasswordHasher().verify(hashed_password, password)
-    except:
+    except VerificationError:
         return False
 
 
@@ -89,9 +92,9 @@ def authenticate(credentials: HTTPBasicCredentials, session: Session, space: Spa
     """Authenticate user using basic auth"""
     if not space:
         return False
-    if not verify_password(space.basic_auth_password, credentials.password):
+    if not secrets.compare_digest(credentials.username, space.name):
         return False
-    if credentials.username != space.name:
+    if not verify_password(space.basic_auth_password, credentials.password):
         return False
     return True
 
@@ -123,12 +126,14 @@ def send_telegram_message(space, space_event, session):
 
 
 def delete_telegram_message(space, session):
-    logger.info(f"(1) Telegram message tried to be deleted for space '{space.name}'.")
+    logger.info(
+        f"(1) Telegram message tried to be deleted for space '{space.name}'.")
     """Delete previous Telegram message about space event"""
     if not space.telegram_enabled or not space.telegram_bot_token or not space.telegram_channel_id:
         return
     # Get the latest event with telegram_message_id
-    logger.info(f" (2) Telegram message tried to be deleted for space '{space.name}'.")
+    logger.info(
+        f" (2) Telegram message tried to be deleted for space '{space.name}'.")
     latest_event = session.exec(
         select(SpaceEvent)
         .where(SpaceEvent.space_id == space.id, SpaceEvent.telegram_message_id != None)
@@ -136,7 +141,8 @@ def delete_telegram_message(space, session):
     ).first()
     if not latest_event:
         return
-    logger.info(f" (3) Telegram message tried to be deleted for space '{space.name}'.")
+    logger.info(
+        f" (3) Telegram message tried to be deleted for space '{space.name}'.")
     url = f"https://api.telegram.org/bot{space.telegram_bot_token}/deleteMessage"
 
     payload = {
@@ -245,6 +251,15 @@ app = FastAPI(lifespan=lifespan)
 
 security = HTTPBasic(auto_error=False)
 
+secure_headers = Secure.from_preset(Preset.BASIC)
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    await secure_headers.set_headers_async(response)
+    return response
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # app.mount("/site", StaticFiles(directory="site", html = True), name="site")
 templates = Jinja2Templates(directory="templates")
@@ -287,7 +302,7 @@ def tech(request: Request):
 @app.post("/space_events/{space_id}/open", response_model=SpaceEventPublic)
 async def open_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks) -> SpaceEvent:
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     event = SpaceEvent(space_id=space_id, state=SpaceEventState.OPEN)
@@ -303,7 +318,7 @@ async def open_space(space_id: int, session: SessionDep, credentials: Annotated[
 @app.post("/space_events/{space_id}/close", response_model=SpaceEventPublic)
 async def close_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks) -> SpaceEvent:
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     event = SpaceEvent(space_id=space_id, state=SpaceEventState.CLOSED)
