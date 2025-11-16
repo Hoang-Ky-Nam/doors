@@ -93,17 +93,18 @@ void https_stuff(int door_state, int keepalive){
     Serial.print("[HTTPS] begin...\n");
     String httpAddress;
     String spaceid = SPACEID;
+    String Server_path = DOOR_SERVER;
     if(keepalive == 0){
       if(door_state == INVERT_SET){
-        httpAddress = DOOR_SERVER+"/space_events/"+spaceid+"/open";
+        httpAddress = Server_path+"/space_events/"+spaceid+"/open";
       } else {
-        httpAddress = DOOR_SERVER+"/space_events/"+spaceid+"/close";
+        httpAddress = Server_path+"/space_events/"+spaceid+"/close";
       }
     }else{
       if(door_state == INVERT_SET){
-        httpAddress = DOOR_SERVER+"/"+spaceid+"/keepalive/open";
+        httpAddress = Server_path+"/"+spaceid+"/keepalive/open";
       } else {
-        httpAddress = DOOR_SERVER+"/"+spaceid+"/keepalive/close";
+        httpAddress = Server_path+"/"+spaceid+"/keepalive/close";
       }
     }
 
