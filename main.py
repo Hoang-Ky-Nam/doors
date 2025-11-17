@@ -5,7 +5,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from secure import ContentSecurityPolicy, Preset, Secure
+from fastapi.middleware.cors import CORSMiddleware
+from secure import Preset, Secure
 from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime
 from enum import Enum
 from sqlalchemy import Column, event
@@ -250,6 +251,14 @@ app = FastAPI(lifespan=lifespan)
 
 
 security = HTTPBasic(auto_error=False)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 secure_headers = Secure.from_preset(Preset.BASIC)
 
