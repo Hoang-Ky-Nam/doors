@@ -159,7 +159,7 @@ def delete_telegram_message(space, session):
         logger.error(f"Failed to delete Telegram message: {e}")
 
 
-sqlite_file_name = "database.db"
+sqlite_file_name = "database/database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 connect_args = {"check_same_thread": False}
