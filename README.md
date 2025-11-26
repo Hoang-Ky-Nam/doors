@@ -47,12 +47,16 @@ pytest
 ## How to run prod
 
 ```
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-alembic upgrade head
-fastapi run main.py
+podman build -t doors:latest .
+mkdir -p ~/.config/containers/systemd/
+cp doors.container ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start doors
+journalctl --user -u doors
+sudo loginctl enable-linger $USER
 ```
+
+And put it behind your favorite TLS enabled reverse-proxy.
 
 ## Migrations
 
