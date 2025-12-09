@@ -13,7 +13,7 @@
 #include <WiFiClientSecureBearSSL.h>
 
 #include "certs.h"
-#include "IoTvars_TaSciEn.h" // change name of file IoTvars_default.h to IoTvars.h
+#include "IoTvars_Modeemi_testing.h" // change name of file IoTvars_default.h to IoTvars.h
 
 
 
@@ -93,17 +93,18 @@ void https_stuff(int door_state, int keepalive){
     Serial.print("[HTTPS] begin...\n");
     String httpAddress;
     String spaceid = SPACEID;
+    String Server_path = DOOR_SERVER;
     if(keepalive == 0){
       if(door_state == INVERT_SET){
-        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/open";
+        httpAddress = Server_path+"/space_events/"+spaceid+"/open";
       } else {
-        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/close";
+        httpAddress = Server_path+"/space_events/"+spaceid+"/close";
       }
     }else{
       if(door_state == INVERT_SET){
-        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/keepalive/open";
+        httpAddress = Server_path+"/space_events/"+spaceid+"/keepalive/open";
       } else {
-        httpAddress = "https://www.doors.modeemi.fi/space_events/"+spaceid+"/keepalive/close";
+        httpAddress = Server_path+"/space_events/"+spaceid+"/keepalive/close";
       }
     }
 
