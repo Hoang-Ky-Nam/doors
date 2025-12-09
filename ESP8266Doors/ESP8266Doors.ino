@@ -102,9 +102,11 @@ void https_stuff(int door_state, int keepalive){
       }
     }else{
       if(door_state == INVERT_SET){
+
         httpAddress = Server_path+"/space_events/"+spaceid+"/keepalive/open";
       } else {
         httpAddress = Server_path+"/space_events/"+spaceid+"/keepalive/close";
+
       }
     }
 

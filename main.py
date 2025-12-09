@@ -1,15 +1,18 @@
-from typing import Annotated
-from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Query, Request
+import secrets
+from typing import Annotated, Optional
+from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from secure import Preset, Secure
 from sqlmodel import Field, Session, SQLModel, create_engine, select, DateTime
 from enum import Enum
-from sqlalchemy.orm import reconstructor
 from sqlalchemy import Column, event
 from datetime import datetime, timezone
 from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError
 import requests
 import logging
 from contextlib import asynccontextmanager
@@ -40,20 +43,25 @@ class SpacePublic(SQLModel):
     lat: float = Field(default=None, nullable=True)
     lon: float = Field(default=None, nullable=True)
     contact_email: str = Field(default=None, nullable=False)
-    #last_keepalive: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_keepalive: datetime = Field(sa_column=Column(DateTime(timezone=True)), default_factory=lambda: datetime.now(timezone.utc))
+    # last_keepalive: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_keepalive: datetime = Field(sa_column=Column(
+        DateTime(timezone=True)), default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Space(SpacePublic, table=True):
     basic_auth_password: str = Field()
+    is_private: bool = Field(default=False, nullable=False)
     telegram_bot_token: str = Field(default=None, nullable=True)
     telegram_channel_id: str = Field(default=None, nullable=True)
     telegram_enabled: bool = Field(default=False, nullable=False)
 
+
 @event.listens_for(Space, "load")
 def receive_load(space, context):
     if space.last_keepalive and space.last_keepalive.tzinfo is None:
-        space.last_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
+        space.last_keepalive = space.last_keepalive.replace(
+            tzinfo=timezone.utc)
+
 
 class SpaceEventPublic(SQLModel):
     id: int | None = Field(default=None, primary_key=True)
@@ -62,7 +70,7 @@ class SpaceEventPublic(SQLModel):
         default_factory=lambda: datetime.now(timezone.utc), index=True)
     state: SpaceEventState = Field(
         sa_column_kwargs={"default": SpaceEventState.UNKNOWN})
-    
+
 
 class SpaceEvent(SpaceEventPublic, table=True):
     telegram_message_id: int | None = Field(default=None, nullable=True)
@@ -77,7 +85,7 @@ def verify_password(hashed_password: str, password: str) -> bool:
     """Verify password using argon2id"""
     try:
         return PasswordHasher().verify(hashed_password, password)
-    except:
+    except VerificationError:
         return False
 
 
@@ -85,9 +93,9 @@ def authenticate(credentials: HTTPBasicCredentials, session: Session, space: Spa
     """Authenticate user using basic auth"""
     if not space:
         return False
-    if not verify_password(space.basic_auth_password, credentials.password):
+    if not secrets.compare_digest(credentials.username, space.name):
         return False
-    if credentials.username != space.name:
+    if not verify_password(space.basic_auth_password, credentials.password):
         return False
     return True
 
@@ -96,7 +104,7 @@ def send_telegram_message(space, space_event, session):
     """Send Telegram message about space event"""
     if not space.telegram_enabled or not space.telegram_bot_token or not space.telegram_channel_id:
         return
-    message = f"'{space.name}' door is {space_event.state.value}."
+    message = f"{space.name} door is {space_event.state.value}."
     url = f"https://api.telegram.org/bot{space.telegram_bot_token}/sendMessage"
     payload = {
         "chat_id": space.telegram_channel_id,
@@ -119,10 +127,14 @@ def send_telegram_message(space, space_event, session):
 
 
 def delete_telegram_message(space, session):
+    logger.info(
+        f"(1) Telegram message tried to be deleted for space '{space.name}'.")
     """Delete previous Telegram message about space event"""
     if not space.telegram_enabled or not space.telegram_bot_token or not space.telegram_channel_id:
         return
     # Get the latest event with telegram_message_id
+    logger.info(
+        f" (2) Telegram message tried to be deleted for space '{space.name}'.")
     latest_event = session.exec(
         select(SpaceEvent)
         .where(SpaceEvent.space_id == space.id, SpaceEvent.telegram_message_id != None)
@@ -130,7 +142,10 @@ def delete_telegram_message(space, session):
     ).first()
     if not latest_event:
         return
+    logger.info(
+        f" (3) Telegram message tried to be deleted for space '{space.name}'.")
     url = f"https://api.telegram.org/bot{space.telegram_bot_token}/deleteMessage"
+
     payload = {
         "chat_id": space.telegram_channel_id,
         "message_id": latest_event.telegram_message_id
@@ -144,15 +159,11 @@ def delete_telegram_message(space, session):
         logger.error(f"Failed to delete Telegram message: {e}")
 
 
-sqlite_file_name = "database.db"
+sqlite_file_name = "database/database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 connect_args = {"check_same_thread": False}
 engine = create_engine(sqlite_url, connect_args=connect_args)
-
-
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
 
 
 def get_session():
@@ -162,7 +173,6 @@ def get_session():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
     task = None
     # Create a default space for testing
     with Session(engine) as session:
@@ -187,7 +197,7 @@ async def lifespan(app: FastAPI):
                 space_id=1, state=SpaceEventState.UNKNOWN)
             session.add(initial_event)
             session.commit()
-        task = asyncio.create_task(scheduled_task(session))
+    task = asyncio.create_task(scheduled_task())
     yield
     # Cleanup: cancel task on shutdown
     task.cancel()
@@ -197,10 +207,11 @@ async def lifespan(app: FastAPI):
         pass
 
 
-async def scheduled_task(session):
+async def scheduled_task():
     while True:
         await asyncio.sleep(KEEPALIVE_INTERVAL)
-        await check_keepalives(session)
+        with Session(engine) as session:
+            await check_keepalives(session)
 
 
 async def check_keepalives(session):
@@ -208,24 +219,26 @@ async def check_keepalives(session):
     logger.info(f"Stage 0. Keepalive checking.")
     for space in spaces:
         latest_event = session.exec(
-                select(SpaceEvent).where(SpaceEvent.space_id ==
-                                         space.id).order_by(SpaceEvent.timestamp.desc())
-            ).first()
-        logger.info(f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
+            select(SpaceEvent).where(SpaceEvent.space_id ==
+                                     space.id).order_by(SpaceEvent.timestamp.desc())
+        ).first()
+        logger.info(
+            f"Stage 1. Keepalive checking for space '{space.name}' '{latest_event.state}'.")
         if latest_event.state != SpaceEventState.UNKNOWN:
-            logger.info(f"Stage 2. Keepalive checking for space '{space.name}' .")
+            logger.info(
+                f"Stage 2. Keepalive checking for space '{space.name}' .")
             aware_keepalive = space.last_keepalive.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             delta = now - aware_keepalive
             if delta.total_seconds() > KEEPALIVE_INTERVAL:
                 logger.warning(
-                    f"Space '{space.name}' has not sent keepalive for {delta.total_seconds()/60:.1f} minutes.")
+                    f"Space {space.name} has not sent keepalive for {delta.total_seconds()/60:.1f} minutes.")
                 unknown_event = SpaceEvent(
                     space_id=space.id, state=SpaceEventState.UNKNOWN)
                 session.add(unknown_event)
                 session.commit()
                 logger.info(
-                    f"Space '{space.name}' state set to UNKNOWN due to missing keepalive.")
+                    f"Space {space.name} state set to UNKNOWN due to missing keepalive.")
                 delete_telegram_message(space, session)
                 send_telegram_message(space, unknown_event, session)
     logger.info(f"Stage 5. Keepalive check ended.")
@@ -234,13 +247,27 @@ async def check_keepalives(session):
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-app = FastAPI(lifespan=lifespan,
-              docs_url=None,     # disables Swagger UI
-              redoc_url=None,    # disables ReDoc
-              openapi_url=None)
+app = FastAPI(lifespan=lifespan)
 
 
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+secure_headers = Secure.from_preset(Preset.BASIC)
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    await secure_headers.set_headers_async(response)
+    return response
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # app.mount("/site", StaticFiles(directory="site", html = True), name="site")
@@ -254,15 +281,17 @@ def main_page():
 
 @app.get("/status")
 def status(request: Request, session: SessionDep):
-    spaces_from_db = session.exec(select(Space)).all()
+    # Select only non is_private spaces
+    spaces_from_db = session.exec(
+        select(Space).where(Space.is_private == False)).all()
     spaces_dict = {}
     spaces_counter = 1
     for space_idx in spaces_from_db:
         latest_event = session.exec(select(SpaceEvent).where(
             SpaceEvent.space_id == space_idx.id).order_by(SpaceEvent.timestamp.desc())).first()
-        if latest_event.state == SpaceEventState.OPEN:
+        if latest_event and latest_event.state == SpaceEventState.OPEN:
             current_state = "open"
-        elif latest_event.state == SpaceEventState.CLOSED:
+        elif latest_event and latest_event.state == SpaceEventState.CLOSED:
             current_state = "closed"
         else:
             current_state = "unknown"
@@ -278,32 +307,18 @@ def status(request: Request, session: SessionDep):
 def tech(request: Request):
     return templates.TemplateResponse(request=request, name="tech.html")
 
-@app.get("/space/by_id/{space_id}", response_model=SpacePublic)
-def read_space(space_id: int, session: SessionDep) -> Space:
-   space = session.get(Space, space_id)
-   if not space:
-       raise HTTPException(status_code=404, detail="Space not found")
-   return space
-
-@app.get("/space/by_name/{space_name}", response_model=SpacePublic)
-def read_space_by_name(space_name: str, session: SessionDep) -> Space:
-   space = session.exec(select(Space).where(Space.name == space_name)).first()
-   if not space:
-       raise HTTPException(status_code=404, detail="Space not found")
-   return space
-
 
 @app.post("/space_events/{space_id}/open", response_model=SpaceEventPublic)
 async def open_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks) -> SpaceEvent:
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     event = SpaceEvent(space_id=space_id, state=SpaceEventState.OPEN)
     session.add(event)
     session.commit()
     session.refresh(event)
-    logger.info(f"Space '{space.name}' opened.")
+    logger.info(f"Space {space.name} opened.")
     delete_telegram_message(space, session)
     background_tasks.add_task(send_telegram_message, space, event, session)
     return event
@@ -312,14 +327,14 @@ async def open_space(space_id: int, session: SessionDep, credentials: Annotated[
 @app.post("/space_events/{space_id}/close", response_model=SpaceEventPublic)
 async def close_space(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks) -> SpaceEvent:
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     event = SpaceEvent(space_id=space_id, state=SpaceEventState.CLOSED)
     session.add(event)
     session.commit()
     session.refresh(event)
-    logger.info(f"Space '{space.name}' closed.")
+    logger.info(f"Space {space.name} closed.")
     delete_telegram_message(space, session)
     background_tasks.add_task(send_telegram_message, space, event, session)
     return event
@@ -328,7 +343,7 @@ async def close_space(space_id: int, session: SessionDep, credentials: Annotated
 @app.post("/space_events/{space_id}/keepalive/open")
 def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     space.last_keepalive = datetime.now(timezone.utc)
@@ -346,13 +361,14 @@ def keepalive_space_open(space_id: int, session: SessionDep, credentials: Annota
         session.refresh(event)
         delete_telegram_message(space, session)
         background_tasks.add_task(send_telegram_message, space, event, session)
-    logger.info(f"Received keepalive from space '{space.name}'. State open.")
+    logger.info(f"Received keepalive from space {space.name}. State open.")
     return {"message": "Keepalive received"}
+
 
 @app.post("/space_events/{space_id}/keepalive/close")
 def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annotated[HTTPBasicCredentials, Depends(security)], background_tasks: BackgroundTasks):
     space = session.get(Space, space_id)
-    if not authenticate(credentials, session, space):
+    if not credentials or not authenticate(credentials, session, space):
         raise HTTPException(
             status_code=403, detail="Forbidden")
     space.last_keepalive = datetime.now(timezone.utc)
@@ -369,62 +385,46 @@ def keepalive_space_close(space_id: int, session: SessionDep, credentials: Annot
         session.refresh(event)
         delete_telegram_message(space, session)
         background_tasks.add_task(send_telegram_message, space, event, session)
-    logger.info(f"Received keepalive from space '{space.name}'. State closed.")
+    logger.info(f"Received keepalive from space {space.name}. State closed.")
     return {"message": "Keepalive received"}
 
 
-@app.get("/space_events/{space_id}", response_model=list[SpaceEventPublic])
-def read_space_events(
-   space_id: int,
-   session: SessionDep,
-   skip: int = 0,
-   limit: int = Query(default=100, lte=1000)
-):
-   events = session.exec(
-       select(SpaceEvent).where(SpaceEvent.space_id ==
-                                space_id).offset(skip).limit(limit)
-   ).all()
-   return events
-
-
-@app.get("/space_events/{space_id}/latest", response_model=SpaceEventPublic)
-def read_latest_space_event(space_id: int, session: SessionDep):
-    event = session.exec(
-        select(SpaceEvent).where(SpaceEvent.space_id ==
-                                 space_id).order_by(SpaceEvent.timestamp.desc())
-    ).first()
-    if not event:
-        raise HTTPException(
-            status_code=404, detail="No events found for this space")
-    return event
-
-
-# SpaceAPI response
 @app.get("/space/{space_name}/space.json")
-def space_api(space_name: str, session: SessionDep):
+def space_api(space_name: str, session: SessionDep, credentials: Optional[HTTPBasicCredentials] = Depends(security)):
     space = session.exec(select(Space).where(Space.name == space_name)).first()
     if not space:
         raise HTTPException(status_code=404, detail="Space not found")
+    if space.is_private:
+        if not credentials or not authenticate(credentials, session, space):
+            raise HTTPException(
+                status_code=401, detail="Unauthorized")
     latest_event = session.exec(
         select(SpaceEvent).where(SpaceEvent.space_id ==
                                  space.id).order_by(SpaceEvent.timestamp.desc())
     ).first()
     state = latest_event.state if latest_event else SpaceEventState.UNKNOWN
-    return {
+    space_json = {
         "api_compatibility": ["15"],
         "space": space.name,
         "logo": space.logo,
         "url": space.url,
-        "location": {
-            "address": space.address,
-            "lat": space.lat,
-            "lon": space.lon
-        },
         "state": {
             "open": state == SpaceEventState.OPEN,
-            "lastchange": int(latest_event.timestamp.timestamp()) if latest_event else None
         },
         "contact": {
             "email": space.contact_email
         }
     }
+    # Add location if available
+    if space.address or (space.lat is not None and space.lon is not None):
+        space_json["location"] = {}
+        if space.address:
+            space_json["location"]["address"] = space.address
+        if space.lat is not None and space.lon is not None:
+            space_json["location"]["lat"] = space.lat
+            space_json["location"]["lon"] = space.lon
+    if latest_event is not None:
+        # UTC Unix timestamp
+        space_json["state"]["lastchange"] = int(
+            latest_event.timestamp.replace(tzinfo=timezone.utc).timestamp())
+    return space_json

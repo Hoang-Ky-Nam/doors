@@ -1,0 +1,27 @@
+[Unit]
+Description=Doorspacestate - Door event server with SpaceAPI
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/doors:latest
+ContainerName=doors
+
+# Mount volume with proper permissions
+Volume=/home/modeemi/doors/database:/app/database:Z,U
+
+# Environment variables
+Environment=KEEPALIVE_INTERVAL=1300
+
+# Network
+PublishPort=8000:8000
+
+# Security options
+SecurityLabelDisable=false
+
+[Service]
+TimeoutStartSec=300
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target
